@@ -64,23 +64,34 @@ class QueryViewModel(
 
     suspend fun isBookFavorite(bookId: String): Boolean {
         return withContext(Dispatchers.IO) {
-            bookDao.getBookById(bookId) != null
+            bookDao.getById(bookId) != null  // Change getBookById to getById
         }
     }
 
-    suspend fun addFavoriteBook(book: Book): Boolean {
-        return withContext(Dispatchers.IO) {
-            val price = book.volume.value * 5
-            val bookEntity = BookEntity(book.id, book.name, book.description, price, book.volume.value)
-            bookDao.insert(bookEntity)
-            favoritesUpdated()
-            true
+    fun addFavoriteBook(book: Book): Boolean {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                val price = book.price // or your price calculation logic
+                val bookEntity = BookEntity(
+                    id = book.id,
+                    name = book.name,
+                    imageUrl = book.image_url,
+                    description = book.description,
+                    price = price,
+                    volumeValue = book.volume.value,
+                    volumeUnit = book.volume.unit,
+                    quantity = 1 // Default quantity is 1
+                )
+                bookDao.insert(bookEntity)
+                favoritesUpdated()
+            }
         }
+        return true
     }
 
     suspend fun removeFavoriteBook(book: Book): Boolean {
         return withContext(Dispatchers.IO) {
-            val bookEntity = bookDao.getBookById(book.id)
+            val bookEntity = bookDao.getById(book.id)  // Change getBookById to getById
             if (bookEntity != null) {
                 bookDao.delete(bookEntity)
                 favoritesUpdated()
@@ -92,34 +103,41 @@ class QueryViewModel(
     }
 
     fun getBeers() {
-    viewModelScope.launch(Dispatchers.IO) {
-        updateSearchStarted(true)
-        try {
-            _books.value = bookDao.getAll()
-        } catch (e: IOException) {
-            // Handle IOException
-        } catch (e: HttpException) {
-            // Handle HttpException
-        } finally {
-            withContext(Dispatchers.Unconfined) {
-                updateSearchStarted(false)
+        viewModelScope.launch(Dispatchers.IO) {
+            updateSearchStarted(true)
+            try {
+                _books.value = bookDao.getAll()
+            } catch (e: IOException) {
+                // Handle IOException
+            } catch (e: HttpException) {
+                // Handle HttpException
+            } finally {
+                withContext(Dispatchers.Unconfined) {
+                    updateSearchStarted(false)
+                }
             }
+        }
+    }
+
+ private fun favoritesUpdated() {
+    viewModelScope.launch(Dispatchers.IO) {
+        favoritesfUiState = QueryUiState.Loading
+        val favoriteBooksEntities = bookDao.getAll()
+        val favoriteBooks = favoriteBooksEntities.map {
+            Book(
+                id = it.id, 
+                name = it.name, 
+                image_url = it.imageUrl,  // Use imageUrl from BookEntity
+                description = it.description, 
+                price = it.price, 
+                volume = Volume(it.volumeValue, it.volumeUnit)  // Use volumeValue and volumeUnit
+            )
+        }
+        withContext(Dispatchers.Main) {
+            favoritesfUiState = QueryUiState.Success(favoriteBooks)
         }
     }
 }
-
-    private fun favoritesUpdated() {
-        viewModelScope.launch(Dispatchers.IO) {
-            favoritesfUiState = QueryUiState.Loading
-            val favoriteBooksEntities = bookDao.getAll()
-            val favoriteBooks = favoriteBooksEntities.map {
-                Book(it.id, it.name, "", it.description, it.price, Volume(it.volume, "liters"))
-            }
-            withContext(Dispatchers.Main) {
-                favoritesfUiState = QueryUiState.Success(favoriteBooks)
-            }
-        }
-    }
 
     fun updateQuery(query: String) {
         _uiStateSearch.update { currentState ->
@@ -137,13 +155,13 @@ class QueryViewModel(
         }
     }
 
-    fun getBooks(query: String = "") { //  "travel"
+    // Only update this function if needed - most likely it won't need changes
+    fun getBooks(query: String = "") {
         updateSearchStarted(true)
         viewModelScope.launch {
             _uiState.value = QueryUiState.Loading
 
             _uiState.value = try {
-                // Notes: List<Book>? NULLABLE
                 val books = bookshelfRepository.getBooks(query)
                 if (books == null) {
                     QueryUiState.Error
@@ -166,19 +184,21 @@ class QueryViewModel(
         }
     }
 
-    fun removeFromCart(book: BookEntity) {
+
+
+    // Fix this function - calling suspend functions requires a coroutine context
+    fun addBeer(book: BookEntity) {
         viewModelScope.launch {
-            deleteBook(book)
+            bookDao.insert(book)
+            _books.value = bookDao.getAll()
         }
     }
 
-    fun addBeer(book: BookEntity){
-        bookDao.insert(book)
-        _books.value = bookDao.getAll()
-    }
-
-    fun getOrders(){
-        _orders.value = orderDao.getAll()
+    // Fix this function too
+    fun getOrders() {
+        viewModelScope.launch {
+            _orders.value = orderDao.getAll()
+        }
     }
 
     suspend fun insertOrder(order: OrderEntity) {
@@ -193,6 +213,48 @@ class QueryViewModel(
         withContext(Dispatchers.IO) {
             bookDao.delete(book)
             _books.value = bookDao.getAll()
+        }
+    }
+
+ // Example of how to use the non-suspend DAO methods:
+fun updateBookQuantity(id: String, quantity: Int) {
+    viewModelScope.launch(Dispatchers.IO) {
+        // Find the book by ID
+        val book = bookDao.getById(id)
+        
+        // Update the book with the new quantity
+        book?.let {
+            val updatedBook = it.copy(quantity = quantity)
+            bookDao.update(updatedBook)
+            
+            // Update the UI state with the new book list
+            val updatedBooks = bookDao.getAll()
+            withContext(Dispatchers.Main) {
+                _books.value = updatedBooks
+            }
+        }
+    }
+}
+
+    // Make sure this function is also properly calling suspend functions
+    fun calculateOrderTotal(): Double {
+        // Cannot directly access books.value here if it depends on suspend calls
+        // Either make this a suspend function or use a local cache
+        return books.value.sumOf { it.price.toDouble() * it.quantity }
+    }
+
+    // Similarly, ensure removeFromCart properly updates the UI state
+    fun removeFromCart(item: BookEntity) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                bookDao.delete(item)
+                
+                // Update the UI state with the new book list - IMPORTANT!
+                _books.value = bookDao.getAll()
+                
+                // Log for debugging
+                //Log.d("CART", "Item removed, books count: ${_books.value.size}")
+            }
         }
     }
 

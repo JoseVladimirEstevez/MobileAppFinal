@@ -5,7 +5,7 @@ import androidx.room.Room
 import com.example.bookshelf.data.BookshelfRepository
 import com.example.bookshelf.data.DefaultBookshelfRepository
 import com.example.bookshelf.data.db.AppDatabase
-
+import com.example.bookshelf.BuildConfig
 import com.example.bookshelf.data.db.dao.BookDao
 import com.example.bookshelf.network.BookshelfApiService
 import okhttp3.OkHttpClient
@@ -24,7 +24,10 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
         Room.databaseBuilder(
             context,
             AppDatabase::class.java, "AppDatabase"
-        ).fallbackToDestructiveMigration().build()
+        )
+        .addMigrations(AppDatabase.MIGRATION_1_2) // Add the migration
+        .fallbackToDestructiveMigration() // Only if you're okay with losing data when migration fails
+        .build()
     }
 
      override val bookDao: BookDao by lazy {
@@ -37,17 +40,25 @@ private val logging = HttpLoggingInterceptor().apply { level = HttpLoggingInterc
         .addInterceptor(logging)
         .build()
 
+    private val okHttpClient = OkHttpClient.Builder()
+        .addInterceptor { chain ->
+            val original = chain.request()
+            val request = original.newBuilder()
+                .header("X-RapidAPI-Key", BuildConfig.RAPID_API_KEY)
+                .header("X-RapidAPI-Host", "beer9.p.rapidapi.com")
+                .build()
+            chain.proceed(request)
+        }
+        .build()
 
-    override val bookshelfApiService: BookshelfApiService by lazy {
-        Retrofit.Builder()
-            .addConverterFactory(GsonConverterFactory.create())
-//            .addConverterFactory(json
-//                    .asConverterFactory("application/json".toMediaType()))
-            .baseUrl(BookshelfApiService.BASE_URL)
-            .client(client)  // Add this line
-            .build()
-            .create()
-    }
+   override val bookshelfApiService: BookshelfApiService by lazy {
+    Retrofit.Builder()
+        .addConverterFactory(GsonConverterFactory.create())
+        .baseUrl(BookshelfApiService.BASE_URL)
+        .client(okHttpClient)  // Change this to use okHttpClient with the API key
+        .build()
+        .create()
+}
 
     override val bookshelfRepository: BookshelfRepository by lazy {
         DefaultBookshelfRepository(bookshelfApiService)

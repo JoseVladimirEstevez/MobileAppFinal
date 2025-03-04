@@ -19,8 +19,8 @@ class DetailsViewModel(
     private val _uiStateDetail = MutableStateFlow<DetailsUiState>(DetailsUiState.Loading)
     val uiStateDetail = _uiStateDetail.asStateFlow()
 
-
-    fun getBook(id: Int) {
+    // Updated to use String instead of Int
+    fun getBook(id: String) {
         viewModelScope.launch {
             _uiStateDetail.value = try {
                 // Notes: List<Book>? NULLABLE

@@ -82,48 +82,67 @@ fun FavoritesScreen(
 
     }
 
+    // Get the current books state - this will recompose when books change
     val books by viewModel.books.collectAsState()
-    val orderTotal = books.sumOf { it.price.toDouble() }
+    
+    // Calculate the order total directly from the books list
+    // This will recalculate every time the books list changes
+    val orderTotal = books.sumOf { it.price.toDouble() * it.quantity }
+    
     val isButtonEnabled = verifyEmail(email) && selectedDate.isAfter(LocalDate.now()) && books.isNotEmpty()
 
     Column {
         if (isDatePickerDialogOpen) {
             Dialog(onDismissRequest = { isDatePickerDialogOpen = false }) {
-                Column {
-                    DatePicker(
-                        datePickerState = datePickerState,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 10.dp),
-                        dateFormatter = remember { DatePickerFormatter() },
-                        dateValidator = { selectedDate -> 
-                            // Calculate the minimum allowed date
-                            val minDate = LocalDate.now().plusDays(minDaysFromNow.toLong())
-                            val minDateMillis: Long =
-                                minDate.atStartOfDay(ZoneId.of("America/New_York")).toInstant()
-                                    .toEpochMilli()
-
-                            // Check if the selected date is equal to or after the minimum allowed date
-                            val isValid = selectedDate >= minDateMillis
-
-                            isValid
-                        },
-                        title = { Text(
-                            text = "Select a Pick-Up Date",
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.align(Alignment.CenterHorizontally)
-                        ) },
-                        headline = { }, // Your custom headline composable
-                        colors = DatePickerDefaults.colors()
-                    )
-                    Button(
-                        onClick = { isDatePickerDialogOpen = false },
-                        modifier = Modifier.height(40.dp),
-                        shape = RoundedCornerShape(5.dp),
-                        contentPadding = PaddingValues(5.dp),
+                Surface(
+                    color = MaterialTheme.colorScheme.surface,
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp)
                     ) {
-                        Text("Confirm Date")
+                        DatePicker(
+                            datePickerState = datePickerState,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 10.dp),
+                            dateFormatter = remember { DatePickerFormatter() },
+                            dateValidator = { selectedDate -> 
+                                // Your existing validation code
+                                val minDate = LocalDate.now().plusDays(minDaysFromNow.toLong())
+                                val minDateMillis: Long =
+                                    minDate.atStartOfDay(ZoneId.of("America/New_York")).toInstant()
+                                        .toEpochMilli()
+                                selectedDate >= minDateMillis
+                            },
+                            title = { 
+                                Text(
+                                    text = "Select a Pick-Up Date",
+                                    fontSize = 24.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                                ) 
+                            },
+                            headline = { }, // Your custom headline composable
+                            colors = DatePickerDefaults.colors(
+                                containerColor = MaterialTheme.colorScheme.surface,
+                                titleContentColor = MaterialTheme.colorScheme.onSurface,
+                                dayContentColor = MaterialTheme.colorScheme.onSurface,
+                                selectedDayContentColor = MaterialTheme.colorScheme.onPrimary,
+                                selectedDayContainerColor = MaterialTheme.colorScheme.primary
+                            )
+                        )
+                        Button(
+                            onClick = { isDatePickerDialogOpen = false },
+                            modifier = Modifier
+                                .height(40.dp)
+                                .fillMaxWidth()
+                                .padding(top = 8.dp),
+                            shape = RoundedCornerShape(5.dp)
+                        ) {
+                            Text("Confirm Date")
+                        }
                     }
                 }
             }
@@ -283,6 +302,8 @@ fun OrderTotal(total: Double) {
 @Composable
 fun FavoritesCard(item: BookEntity, viewModel: QueryViewModel) {
     var buttonClicked by remember { mutableStateOf(false) }
+    val quantity = item.quantity
+    
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -298,7 +319,7 @@ fun FavoritesCard(item: BookEntity, viewModel: QueryViewModel) {
             Column(
                 modifier = Modifier
                     .padding(start = 16.dp, bottom = 10.dp, top = 10.dp)
-                    .weight(2f), // Occupy 1/3 of the available space
+                    .weight(2f),
             ) {
                 // Name label
                 Text(
@@ -309,6 +330,43 @@ fun FavoritesCard(item: BookEntity, viewModel: QueryViewModel) {
                 Text(
                     text = "ID: " + item.id,
                 )
+                
+                // Add quantity selector
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(top = 8.dp)
+                ) {
+                    Text("Quantity: ")
+                    
+                    Button(
+                        onClick = { 
+                            if (quantity > 1) {
+                                viewModel.updateBookQuantity(item.id, quantity - 1)
+                            }
+                        },
+                        modifier = Modifier.height(30.dp).padding(horizontal = 2.dp),
+                        shape = RoundedCornerShape(5.dp),
+                        contentPadding = PaddingValues(0.dp),
+                    ) {
+                        Text("-")
+                    }
+                    
+                    Text(
+                        text = quantity.toString(),
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                    )
+                    
+                    Button(
+                        onClick = { 
+                            viewModel.updateBookQuantity(item.id, quantity + 1)
+                        },
+                        modifier = Modifier.height(30.dp).padding(horizontal = 2.dp),
+                        shape = RoundedCornerShape(5.dp),
+                        contentPadding = PaddingValues(0.dp),
+                    ) {
+                        Text("+")
+                    }
+                }
             }
 
             // End-aligned column
@@ -316,15 +374,10 @@ fun FavoritesCard(item: BookEntity, viewModel: QueryViewModel) {
                 horizontalAlignment = Alignment.End,
                 modifier = Modifier
                     .weight(1f)
-                    .padding(
-                        end = 16.dp,
-                        bottom = 10.dp,
-                        top = 10.dp,
-                        start = 10.dp
-                    )
+                    .padding(end = 16.dp, bottom = 10.dp, top = 10.dp, start = 10.dp)
             ) {
                 Text(
-                    text = "Price: " + item.price.toString() + " $",
+                    text = "${item.price * item.quantity} $", // Multiply by quantity
                     modifier = Modifier.padding(bottom = 4.dp),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
@@ -345,12 +398,11 @@ fun FavoritesCard(item: BookEntity, viewModel: QueryViewModel) {
     }
 
     LaunchedEffect(buttonClicked) {
-        if (buttonClicked) {
+        if (buttonClicked) {    
             viewModel.removeFromCart(item)
-            buttonClicked = false // Reset the state
+            buttonClicked = false
         }
     }
-
 }
 
 fun verifyEmail(email: String): Boolean{

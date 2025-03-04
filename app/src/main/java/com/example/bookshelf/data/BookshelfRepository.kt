@@ -3,12 +3,12 @@ package com.example.bookshelf.data
 import com.example.bookshelf.model.Book
 
 /**
- * Repository retrieves volume data from underlying data source.
+ * Interface for book data retrieval.
  */
 interface BookshelfRepository {
-    /** Retrieves list of books from underlying data source */
-    // Notes: List<Book>? NULLABLE
+    /** Retrieves books based on query */
     suspend fun getBooks(query: String): List<Book>?
-
-    suspend fun getBook(id: Int): Book?
+    
+    /** Retrieves specific book by id */
+    suspend fun getBook(id: String): Book?  // Changed from Int to String
 }
